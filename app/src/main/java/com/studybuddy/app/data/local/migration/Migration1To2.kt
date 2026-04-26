@@ -14,6 +14,10 @@ val MIGRATION_1_2 = object : Migration(1, 2) {
                 `chapterId`      INTEGER,
                 `subjectName`    TEXT    NOT NULL DEFAULT '',
                 `chapterName`    TEXT    NOT NULL DEFAULT '',
+                `contentType`    TEXT    NOT NULL DEFAULT 'TEXT',
+                `exerciseId`     TEXT,
+                `itemNumber`     INTEGER,
+                `chapterRef`     TEXT,
                 `chunkText`      TEXT    NOT NULL,
                 `chunkIndex`     INTEGER NOT NULL,
                 `embedding`      BLOB    NOT NULL,
@@ -21,14 +25,10 @@ val MIGRATION_1_2 = object : Migration(1, 2) {
             )
             """.trimIndent()
         )
-        database.execSQL(
-            "CREATE INDEX IF NOT EXISTS `index_knowledge_chunks_subjectId`      ON `knowledge_chunks` (`subjectId`)"
-        )
-        database.execSQL(
-            "CREATE INDEX IF NOT EXISTS `index_knowledge_chunks_chapterId`      ON `knowledge_chunks` (`chapterId`)"
-        )
-        database.execSQL(
-            "CREATE INDEX IF NOT EXISTS `index_knowledge_chunks_sourceImageUri` ON `knowledge_chunks` (`sourceImageUri`)"
-        )
+        database.execSQL("CREATE INDEX IF NOT EXISTS `index_knowledge_chunks_subjectId`      ON `knowledge_chunks` (`subjectId`)")
+        database.execSQL("CREATE INDEX IF NOT EXISTS `index_knowledge_chunks_chapterId`      ON `knowledge_chunks` (`chapterId`)")
+        database.execSQL("CREATE INDEX IF NOT EXISTS `index_knowledge_chunks_sourceImageUri` ON `knowledge_chunks` (`sourceImageUri`)")
+        database.execSQL("CREATE INDEX IF NOT EXISTS `index_knowledge_chunks_exerciseId`     ON `knowledge_chunks` (`exerciseId`)")
+        database.execSQL("CREATE INDEX IF NOT EXISTS `index_knowledge_chunks_contentType`    ON `knowledge_chunks` (`contentType`)")
     }
 }

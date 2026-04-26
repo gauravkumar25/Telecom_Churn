@@ -27,7 +27,10 @@ import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.MicOff
+import androidx.compose.material.icons.filled.Psychology
+import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -226,27 +229,98 @@ fun ChatScreen(
                 }
             }
 
-            // Pending image preview
-            uiState.pendingImageUri?.let { uri ->
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 12.dp, vertical = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically
+            // Extraction progress banner
+            if (uiState.isExtracting) {
+                Card(
+                    modifier = Modifier.fillMaxWidth().padding(8.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
                 ) {
-                    AsyncImage(
-                        model = uri,
-                        contentDescription = null,
-                        modifier = Modifier
-                            .size(56.dp)
-                            .clip(RoundedCornerShape(8.dp)),
-                        contentScale = ContentScale.Crop
-                    )
-                    Spacer(Modifier.width(8.dp))
-                    Text("Image ready to send", style = MaterialTheme.typography.bodySmall)
-                    Spacer(Modifier.weight(1f))
-                    IconButton(onClick = { viewModel.setImage(null) }) {
-                        Icon(Icons.Default.Close, "Remove image")
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Text(uiState.extractionProgress, style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer)
+                        Spacer(Modifier.height(6.dp))
+                        LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                    }
+                }
+            }
+
+            // Extraction success banner
+            uiState.extractionSuccess?.let { msg ->
+                LaunchedEffect(msg) {
+                    kotlinx.coroutines.delay(4000)
+                    viewModel.clearExtractionSuccess()
+                }
+                Card(
+                    modifier = Modifier.fillMaxWidth().padding(8.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
+                ) {
+                    Text(msg, modifier = Modifier.padding(12.dp),
+                        color = MaterialTheme.colorScheme.onSecondaryContainer,
+                        style = MaterialTheme.typography.bodySmall)
+                }
+            }
+
+            // Pending image preview with Extract / Send toggle
+            uiState.pendingImageUri?.let { uri ->
+                Surface(shadowElevation = 2.dp) {
+                    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            AsyncImage(
+                                model = uri,
+                                contentDescription = null,
+                                modifier = Modifier.size(56.dp).clip(RoundedCornerShape(8.dp)),
+                                contentScale = ContentScale.Crop
+                            )
+                            Spacer(Modifier.width(10.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    if (uiState.extractMode) "🧠 Extract to Knowledge Base" else "📤 Send as image in chat",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                                Text(
+                                    if (uiState.extractMode)
+                                        "AI reads & saves — no re-upload needed later"
+                                    else
+                                        "Image sent with your next message",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                                )
+                            }
+                            IconButton(onClick = { viewModel.setImage(null) }) {
+                                Icon(Icons.Default.Close, "Remove")
+                            }
+                        }
+                        Spacer(Modifier.height(6.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            // Mode toggle
+                            OutlinedButton(
+                                onClick = { viewModel.toggleExtractMode() },
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Icon(
+                                    if (uiState.extractMode) Icons.Default.Chat else Icons.Default.Psychology,
+                                    null, modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(Modifier.width(4.dp))
+                                Text(if (uiState.extractMode) "Switch to Chat" else "Switch to Extract")
+                            }
+                            // Action button
+                            Button(
+                                onClick = {
+                                    if (uiState.extractMode) viewModel.extractToKnowledgeBase()
+                                    else viewModel.sendMessage(sessionId)
+                                },
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Icon(
+                                    if (uiState.extractMode) Icons.Default.Save else Icons.AutoMirrored.Filled.Send,
+                                    null, modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(Modifier.width(4.dp))
+                                Text(if (uiState.extractMode) "Extract" else "Send")
+                            }
+                        }
                     }
                 }
             }

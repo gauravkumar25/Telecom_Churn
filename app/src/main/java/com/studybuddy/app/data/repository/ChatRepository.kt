@@ -37,6 +37,7 @@ class ChatRepository @Inject constructor(
     private val studySessionDao: StudySessionDao,
     private val claudeApi: ClaudeApiService,
     private val prefsRepo: PreferencesRepository,
+    private val knowledgeRepository: KnowledgeRepository,
     @ApplicationContext private val context: Context
 ) {
     // Permanent image storage: data/data/<package>/files/images/
@@ -116,7 +117,10 @@ class ChatRepository @Inject constructor(
 
         val recentMessages = messageDao.getRecentMessages(sessionId)
 
-        val systemPrompt = buildSystemPrompt(studentName, studentClass, buddyName, subjects, upcomingExams, extraContext)
+        // Hybrid search: structured SQL + cosine similarity over extracted chapter knowledge
+        val ragContext = buildRagContext(knowledgeRepository.search(userText))
+
+        val systemPrompt = buildSystemPrompt(studentName, studentClass, buddyName, subjects, upcomingExams, extraContext, ragContext)
         val claudeMessages = buildClaudeMessages(recentMessages, imageUri)
 
         return try {
@@ -158,13 +162,27 @@ class ChatRepository @Inject constructor(
         )
     }
 
+    private fun buildRagContext(chunks: List<com.studybuddy.app.data.model.KnowledgeChunk>): String {
+        if (chunks.isEmpty()) return ""
+        return chunks.mapIndexed { i, c ->
+            val label = buildString {
+                if (c.subjectName.isNotBlank()) append(c.subjectName)
+                if (c.exerciseId != null) append(" / Exercise ${c.exerciseId}")
+                if (c.itemNumber != null) append(" Q${c.itemNumber}")
+                if (c.chapterRef != null) append(" (${c.chapterRef})")
+            }.trim().let { if (it.isNotBlank()) "[$it]" else "" }
+            "[${i + 1}] $label ${c.chunkText}"
+        }.joinToString("\n\n")
+    }
+
     private fun buildSystemPrompt(
         studentName: String,
         studentClass: String,
         buddyName: String,
         subjects: List<Subject>,
         upcomingExams: List<Exam>,
-        extraContext: String
+        extraContext: String,
+        ragContext: String = ""
     ): String {
         val subjectsInfo = if (subjects.isNotEmpty()) {
             "Subjects & Syllabus:\n" + subjects.joinToString("\n") { s ->
@@ -205,6 +223,15 @@ $subjectsInfo
 $examsInfo
 
 ${if (extraContext.isNotEmpty()) "Additional notes from parent:\n$extraContext" else ""}
+
+${if (ragContext.isNotEmpty()) """
+--- KNOWLEDGE BASE (extracted from student's own textbook photos) ---
+Prioritise this content when answering. It is the student's actual syllabus material.
+
+$ragContext
+
+--- END KNOWLEDGE BASE ---
+""" else ""}
 
 Rules:
 - Never discourage or make the student feel bad

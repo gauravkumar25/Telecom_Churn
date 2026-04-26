@@ -8,6 +8,7 @@ import androidx.compose.material.icons.filled.Book
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Chat
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Psychology
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
@@ -25,6 +26,7 @@ import androidx.navigation.navArgument
 import com.studybuddy.app.ui.screens.chat.ChatScreen
 import com.studybuddy.app.ui.screens.exams.ExamsScreen
 import com.studybuddy.app.ui.screens.home.HomeScreen
+import com.studybuddy.app.ui.screens.knowledge.KnowledgeScreen
 import com.studybuddy.app.ui.screens.settings.SettingsScreen
 import com.studybuddy.app.ui.screens.subjects.SubjectsScreen
 
@@ -35,10 +37,13 @@ sealed class Screen(val route: String, val label: String, val icon: ImageVector)
     }
     object Subjects : Screen("subjects", "Subjects", Icons.Default.Book)
     object Exams : Screen("exams", "Exams", Icons.Default.CalendarMonth)
+    object Knowledge : Screen("knowledge", "Knowledge", Icons.Default.Psychology)
     object Settings : Screen("settings", "Settings", Icons.Default.Settings)
 }
 
-val bottomNavItems = listOf(Screen.Home, Screen.Subjects, Screen.Exams, Screen.Settings)
+val bottomNavItems = listOf(
+    Screen.Home, Screen.Subjects, Screen.Exams, Screen.Knowledge, Screen.Settings
+)
 
 @Composable
 fun StudyBuddyNavGraph() {
@@ -104,6 +109,7 @@ fun StudyBuddyNavGraph() {
             }
             composable(Screen.Subjects.route) { SubjectsScreen() }
             composable(Screen.Exams.route) { ExamsScreen() }
+            composable(Screen.Knowledge.route) { KnowledgeScreen() }
             composable(Screen.Settings.route) { SettingsScreen() }
         }
     }
