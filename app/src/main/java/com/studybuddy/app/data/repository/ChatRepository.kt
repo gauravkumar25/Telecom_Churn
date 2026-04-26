@@ -21,8 +21,12 @@ import com.studybuddy.app.network.models.ContentBlock
 import com.studybuddy.app.network.models.ImageSource
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
+import java.io.File
+import java.io.FileOutputStream
 import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -35,7 +39,37 @@ class ChatRepository @Inject constructor(
     private val prefsRepo: PreferencesRepository,
     @ApplicationContext private val context: Context
 ) {
+    // Permanent image storage: data/data/<package>/files/images/
+    // This directory survives cache clears and app restarts.
+    private val imagesDir: File = File(context.filesDir, "images").also { it.mkdirs() }
+
     val allSessions: Flow<List<StudySession>> = studySessionDao.getAllSessions()
+
+    /**
+     * Copies an image (camera capture or gallery pick) into permanent internal storage.
+     * Returns a file:// Uri pointing to the copy, or null if the copy fails.
+     *
+     * Why this matters:
+     * - Camera files written to cacheDir are deleted by Android when storage is tight.
+     * - Gallery content:// URI grants expire after the current app session; storing
+     *   the raw URI in Room means the image 404s on next launch.
+     */
+    suspend fun copyToInternalStorage(source: Uri): Uri? = withContext(Dispatchers.IO) {
+        try {
+            val ext = when (context.contentResolver.getType(source)) {
+                "image/png" -> "png"
+                "image/webp" -> "webp"
+                else -> "jpg"
+            }
+            val dest = File(imagesDir, "img_${System.currentTimeMillis()}_${UUID.randomUUID().toString().take(6)}.$ext")
+            context.contentResolver.openInputStream(source)?.use { input ->
+                FileOutputStream(dest).use { output -> input.copyTo(output) }
+            }
+            Uri.fromFile(dest)   // file:// — always readable by the app, no permission expiry
+        } catch (e: Exception) {
+            null
+        }
+    }
 
     fun getMessagesForSession(sessionId: String): Flow<List<Message>> =
         messageDao.getMessagesForSession(sessionId)
