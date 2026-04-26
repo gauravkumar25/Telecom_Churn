@@ -119,7 +119,10 @@ fun ChatScreen(
     }
 
     fun startCamera() {
-        val photoFile = File(context.cacheDir, "chapter_${System.currentTimeMillis()}.jpg")
+        // Write directly to permanent storage — the camera fills this file,
+        // then setImage() skips the copy step because it is already internal.
+        val imagesDir = File(context.filesDir, "images").also { it.mkdirs() }
+        val photoFile = File(imagesDir, "chapter_${System.currentTimeMillis()}.jpg")
         cameraImageUri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", photoFile)
         cameraLauncher.launch(cameraImageUri!!)
     }

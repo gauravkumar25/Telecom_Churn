@@ -55,8 +55,16 @@ class ChatViewModel @Inject constructor(
         _uiState.update { it.copy(inputText = text) }
     }
 
+    /**
+     * Copy the image to permanent internal storage immediately on selection.
+     * This prevents loss of camera cache files and expired content:// URI grants.
+     */
     fun setImage(uri: Uri?) {
-        _uiState.update { it.copy(pendingImageUri = uri) }
+        if (uri == null) { _uiState.update { it.copy(pendingImageUri = null) }; return }
+        viewModelScope.launch {
+            val permanent = chatRepository.copyToInternalStorage(uri)
+            _uiState.update { it.copy(pendingImageUri = permanent ?: uri) }
+        }
     }
 
     fun clearError() {
