@@ -1,0 +1,6 @@
+-keep class com.studybuddy.app.network.models.** { *; }
+-keep class com.studybuddy.app.data.model.** { *; }
+-keepattributes Signature
+-keepattributes *Annotation*
+-dontwarn okhttp3.**
+-dontwarn retrofit2.**
