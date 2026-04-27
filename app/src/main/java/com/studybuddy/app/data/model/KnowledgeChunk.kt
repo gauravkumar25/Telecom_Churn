@@ -60,9 +60,22 @@ data class KnowledgeChunk(
     /**
      * 512-dim L2-normalised embedding stored as ByteArray (512 × 4 = 2 KB/chunk).
      * Converted by Converters.floatArrayToBytes / bytesToFloatArray.
-     * Can be swapped for a TFLite model embedding without changing any other layer.
      */
     val embedding: FloatArray,
+
+    // ── Multi-year retention metadata ────────────────────────────────────────
+    /**
+     * Student's grade/class at the time this chunk was ingested, e.g. "Class 7".
+     * Copied from the student profile so data remains attributable across years.
+     * The AI uses grade for explanation depth (not as a DB search filter).
+     */
+    val grade: String = "",
+
+    /**
+     * Academic year when ingested, e.g. "2025-26".
+     * Derived automatically from the system clock at ingestion time.
+     */
+    val academicYear: String = "",
 
     val createdAt: Long = System.currentTimeMillis()
 )

@@ -5,7 +5,6 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
 import android.util.Base64
-import com.google.gson.Gson
 import com.studybuddy.app.data.local.dao.MessageDao
 import com.studybuddy.app.data.local.dao.StudySessionDao
 import com.studybuddy.app.data.model.Exam
@@ -14,14 +13,14 @@ import com.studybuddy.app.data.model.MessageRole
 import com.studybuddy.app.data.model.MessageType
 import com.studybuddy.app.data.model.StudySession
 import com.studybuddy.app.data.model.Subject
-import com.studybuddy.app.network.ClaudeApiService
-import com.studybuddy.app.network.models.ClaudeMessage
-import com.studybuddy.app.network.models.ClaudeRequest
-import com.studybuddy.app.network.models.ContentBlock
-import com.studybuddy.app.network.models.ImageSource
+import com.studybuddy.app.network.GeminiApiService
+import com.studybuddy.app.network.models.GeminiContent
+import com.studybuddy.app.network.models.GeminiPart
+import com.studybuddy.app.network.models.GeminiRequest
+import com.studybuddy.app.network.models.GeminiSystemInstruction
 import dagger.hilt.android.qualifiers.ApplicationContext
-import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
@@ -31,11 +30,13 @@ import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
 
+private const val CHAT_MODEL = "gemini-2.0-flash"
+
 @Singleton
 class ChatRepository @Inject constructor(
     private val messageDao: MessageDao,
     private val studySessionDao: StudySessionDao,
-    private val claudeApi: ClaudeApiService,
+    private val geminiApi: GeminiApiService,
     private val prefsRepo: PreferencesRepository,
     private val knowledgeRepository: KnowledgeRepository,
     @ApplicationContext private val context: Context
@@ -49,24 +50,22 @@ class ChatRepository @Inject constructor(
     /**
      * Copies an image (camera capture or gallery pick) into permanent internal storage.
      * Returns a file:// Uri pointing to the copy, or null if the copy fails.
-     *
-     * Why this matters:
-     * - Camera files written to cacheDir are deleted by Android when storage is tight.
-     * - Gallery content:// URI grants expire after the current app session; storing
-     *   the raw URI in Room means the image 404s on next launch.
      */
     suspend fun copyToInternalStorage(source: Uri): Uri? = withContext(Dispatchers.IO) {
         try {
             val ext = when (context.contentResolver.getType(source)) {
-                "image/png" -> "png"
+                "image/png"  -> "png"
                 "image/webp" -> "webp"
-                else -> "jpg"
+                else         -> "jpg"
             }
-            val dest = File(imagesDir, "img_${System.currentTimeMillis()}_${UUID.randomUUID().toString().take(6)}.$ext")
+            val dest = File(
+                imagesDir,
+                "img_${System.currentTimeMillis()}_${UUID.randomUUID().toString().take(6)}.$ext"
+            )
             context.contentResolver.openInputStream(source)?.use { input ->
                 FileOutputStream(dest).use { output -> input.copyTo(output) }
             }
-            Uri.fromFile(dest)   // file:// — always readable by the app, no permission expiry
+            Uri.fromFile(dest)
         } catch (e: Exception) {
             null
         }
@@ -76,10 +75,7 @@ class ChatRepository @Inject constructor(
         messageDao.getMessagesForSession(sessionId)
 
     suspend fun createSession(title: String): StudySession {
-        val session = StudySession(
-            id = UUID.randomUUID().toString(),
-            title = title
-        )
+        val session = StudySession(id = UUID.randomUUID().toString(), title = title)
         studySessionDao.insert(session)
         return session
     }
@@ -96,54 +92,70 @@ class ChatRepository @Inject constructor(
         subjects: List<Subject> = emptyList(),
         upcomingExams: List<Exam> = emptyList()
     ): Result<Message> {
-        val apiKey = prefsRepo.claudeApiKey.first()
-        if (apiKey.isBlank()) return Result.failure(Exception("Please set your Claude API key in Settings."))
+        val apiKey = prefsRepo.geminiApiKey.first()
+        if (apiKey.isBlank()) return Result.failure(Exception("Please set your Gemini API key in Settings."))
 
-        val studentName = prefsRepo.studentName.first().ifBlank { "there" }
+        val studentName  = prefsRepo.studentName.first().ifBlank { "there" }
         val studentClass = prefsRepo.studentClass.first()
-        val buddyName = prefsRepo.buddyName.first().ifBlank { "Buddy" }
+        val buddyName    = prefsRepo.buddyName.first().ifBlank { "Buddy" }
         val extraContext = prefsRepo.extraContext.first()
+        val model        = prefsRepo.chatModel.first()
 
         val userMessage = Message(
             sessionId = sessionId,
-            role = MessageRole.USER,
-            content = userText,
-            imageUri = imageUri?.toString(),
-            type = if (imageUri != null) MessageType.IMAGE else MessageType.TEXT
+            role      = MessageRole.USER,
+            content   = userText,
+            imageUri  = imageUri?.toString(),
+            type      = if (imageUri != null) MessageType.IMAGE else MessageType.TEXT
         )
-        val userMsgId = messageDao.insert(userMessage)
-
+        messageDao.insert(userMessage)
         updateSessionLastMessage(sessionId, userText)
 
         val recentMessages = messageDao.getRecentMessages(sessionId)
 
         // Hybrid search: structured SQL + cosine similarity over extracted chapter knowledge
-        val ragContext = buildRagContext(knowledgeRepository.search(userText))
+        val ragContext   = buildRagContext(knowledgeRepository.search(userText))
+        val systemPrompt = buildSystemPrompt(
+            studentName, studentClass, buddyName, subjects, upcomingExams, extraContext, ragContext
+        )
 
-        val systemPrompt = buildSystemPrompt(studentName, studentClass, buddyName, subjects, upcomingExams, extraContext, ragContext)
-        val claudeMessages = buildClaudeMessages(recentMessages, imageUri)
+        val geminiContents = buildGeminiContents(recentMessages, imageUri)
 
         return try {
-            val response = claudeApi.sendMessage(
-                apiKey = apiKey,
-                request = ClaudeRequest(
-                    system = systemPrompt,
-                    messages = claudeMessages
+            val response = geminiApi.generateContent(
+                model   = model,
+                apiKey  = apiKey,
+                request = GeminiRequest(
+                    systemInstruction = GeminiSystemInstruction(
+                        parts = listOf(GeminiPart.text(systemPrompt))
+                    ),
+                    contents = geminiContents
                 )
             )
+
             if (response.isSuccessful && response.body() != null) {
-                val replyText = response.body()!!.text
+                val body = response.body()!!
+                if (body.error != null) {
+                    return Result.failure(Exception("Gemini error: ${body.error.message}"))
+                }
+                val replyText = body.text.ifBlank { "Hmm, I couldn't generate a response. Please try again!" }
                 val assistantMessage = Message(
                     sessionId = sessionId,
-                    role = MessageRole.ASSISTANT,
-                    content = replyText
+                    role      = MessageRole.ASSISTANT,
+                    content   = replyText
                 )
                 messageDao.insert(assistantMessage)
                 updateSessionLastMessage(sessionId, replyText)
                 Result.success(assistantMessage)
             } else {
-                val error = "Oops! Something went wrong (${response.code()}). Check your API key in Settings."
-                Result.failure(Exception(error))
+                val code = response.code()
+                val hint = when (code) {
+                    400 -> "Bad request — check your API key format."
+                    403 -> "API key invalid or quota exceeded."
+                    429 -> "Rate limit hit — wait a moment and try again."
+                    else -> "HTTP $code"
+                }
+                Result.failure(Exception("Oops! Something went wrong ($hint). Check Settings."))
             }
         } catch (e: Exception) {
             Result.failure(Exception("Couldn't reach StudyBuddy. Check your internet connection!"))
@@ -152,12 +164,12 @@ class ChatRepository @Inject constructor(
 
     private suspend fun updateSessionLastMessage(sessionId: String, lastMsg: String) {
         val sessions = allSessions.first()
-        val session = sessions.find { it.id == sessionId } ?: return
+        val session  = sessions.find { it.id == sessionId } ?: return
         studySessionDao.update(
             session.copy(
-                lastMessage = lastMsg.take(80),
+                lastMessage  = lastMsg.take(80),
                 messageCount = session.messageCount + 1,
-                updatedAt = System.currentTimeMillis()
+                updatedAt    = System.currentTimeMillis()
             )
         )
     }
@@ -167,22 +179,22 @@ class ChatRepository @Inject constructor(
         return chunks.mapIndexed { i, c ->
             val label = buildString {
                 if (c.subjectName.isNotBlank()) append(c.subjectName)
-                if (c.exerciseId != null) append(" / Exercise ${c.exerciseId}")
-                if (c.itemNumber != null) append(" Q${c.itemNumber}")
-                if (c.chapterRef != null) append(" (${c.chapterRef})")
-            }.trim().let { if (it.isNotBlank()) "[$it]" else "" }
-            "[${i + 1}] $label ${c.chunkText}"
+                if (c.exerciseId != null)       append(" / Exercise ${c.exerciseId}")
+                if (c.itemNumber != null)       append(" Q${c.itemNumber}")
+                if (c.chapterRef != null)       append(" (${c.chapterRef})")
+            }.trim().let { if (it.isNotBlank()) "[$it] " else "" }
+            "[${i + 1}] $label${c.chunkText}"
         }.joinToString("\n\n")
     }
 
     private fun buildSystemPrompt(
-        studentName: String,
+        studentName:  String,
         studentClass: String,
-        buddyName: String,
-        subjects: List<Subject>,
+        buddyName:    String,
+        subjects:     List<Subject>,
         upcomingExams: List<Exam>,
         extraContext: String,
-        ragContext: String = ""
+        ragContext:   String = ""
     ): String {
         val subjectsInfo = if (subjects.isNotEmpty()) {
             "Subjects & Syllabus:\n" + subjects.joinToString("\n") { s ->
@@ -212,7 +224,7 @@ Your personality:
 Your capabilities:
 1. CHAT & EXPLAIN: Answer questions about any subject in simple, fun ways
 2. QUIZ MODE: When asked, quiz the student on topics — give hints if they're stuck
-3. STUDY SCHEDULE: Create personalized study plans based on exams and topics
+3. STUDY SCHEDULE: Create personalised study plans based on exams and topics
 4. REVISION: Help revise chapters systematically, covering all key points
 5. IMAGE ANALYSIS: When a photo of a chapter/textbook is shared, read and explain it
 6. MOTIVATION: Keep spirits high when studying feels hard
@@ -242,37 +254,28 @@ Rules:
         """.trimIndent()
     }
 
-    private fun buildClaudeMessages(messages: List<Message>, newImageUri: Uri?): List<ClaudeMessage> {
-        val claudeMessages = messages.map { msg ->
-            val contentBlocks = mutableListOf<ContentBlock>()
+    private fun buildGeminiContents(messages: List<Message>, newImageUri: Uri?): List<GeminiContent> =
+        messages.map { msg ->
+            val parts = mutableListOf<GeminiPart>()
 
             if (msg.imageUri != null && msg.role == MessageRole.USER) {
-                val imageBase64 = encodeImageToBase64(Uri.parse(msg.imageUri))
-                if (imageBase64 != null) {
-                    contentBlocks.add(ContentBlock.Image(source = ImageSource(data = imageBase64, mediaType = "image/jpeg")))
-                }
+                val base64 = encodeImageToBase64(Uri.parse(msg.imageUri))
+                if (base64 != null) parts.add(GeminiPart.image("image/jpeg", base64))
             }
-            contentBlocks.add(ContentBlock.Text(text = msg.content))
+            parts.add(GeminiPart.text(msg.content))
 
-            ClaudeMessage(
-                role = if (msg.role == MessageRole.USER) "user" else "assistant",
-                content = contentBlocks
+            GeminiContent(
+                role  = if (msg.role == MessageRole.USER) "user" else "model",
+                parts = parts
             )
-        }.toMutableList()
-
-        return claudeMessages
-    }
-
-    private fun encodeImageToBase64(uri: Uri): String? {
-        return try {
-            val inputStream = context.contentResolver.openInputStream(uri) ?: return null
-            val bitmap = BitmapFactory.decodeStream(inputStream)
-            inputStream.close()
-            val outputStream = ByteArrayOutputStream()
-            bitmap.compress(Bitmap.CompressFormat.JPEG, 80, outputStream)
-            Base64.encodeToString(outputStream.toByteArray(), Base64.NO_WRAP)
-        } catch (e: Exception) {
-            null
         }
-    }
+
+    private fun encodeImageToBase64(uri: Uri): String? = try {
+        val stream = context.contentResolver.openInputStream(uri) ?: return null
+        val bitmap = BitmapFactory.decodeStream(stream)
+        stream.close()
+        val out = ByteArrayOutputStream()
+        bitmap.compress(Bitmap.CompressFormat.JPEG, 80, out)
+        Base64.encodeToString(out.toByteArray(), Base64.NO_WRAP)
+    } catch (e: Exception) { null }
 }
