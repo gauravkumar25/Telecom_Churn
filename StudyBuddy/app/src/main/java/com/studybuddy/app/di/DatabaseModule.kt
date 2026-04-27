@@ -10,6 +10,7 @@ import com.studybuddy.app.data.local.dao.MessageDao
 import com.studybuddy.app.data.local.dao.StudySessionDao
 import com.studybuddy.app.data.local.dao.SubjectDao
 import com.studybuddy.app.data.local.migration.MIGRATION_1_2
+import com.studybuddy.app.data.local.migration.MIGRATION_2_3
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -24,7 +25,7 @@ object DatabaseModule {
     @Provides @Singleton
     fun provideDatabase(@ApplicationContext context: Context): AppDatabase =
         Room.databaseBuilder(context, AppDatabase::class.java, "studybuddy.db")
-            .addMigrations(MIGRATION_1_2)
+            .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
             .build()
 
     @Provides fun provideMessageDao(db: AppDatabase): MessageDao = db.messageDao()

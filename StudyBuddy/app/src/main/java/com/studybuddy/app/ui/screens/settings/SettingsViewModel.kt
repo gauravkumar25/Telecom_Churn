@@ -19,7 +19,7 @@ class SettingsViewModel @Inject constructor(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "")
     val studentClass: StateFlow<String> = prefsRepo.studentClass
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "")
-    val apiKey: StateFlow<String> = prefsRepo.claudeApiKey
+    val apiKey: StateFlow<String> = prefsRepo.geminiApiKey
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "")
     val buddyName: StateFlow<String> = prefsRepo.buddyName
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "Buddy")
@@ -28,7 +28,7 @@ class SettingsViewModel @Inject constructor(
 
     fun saveStudentName(name: String) = viewModelScope.launch { prefsRepo.saveStudentName(name) }
     fun saveStudentClass(cls: String) = viewModelScope.launch { prefsRepo.saveStudentClass(cls) }
-    fun saveApiKey(key: String) = viewModelScope.launch { prefsRepo.saveApiKey(key) }
+    fun saveApiKey(key: String) = viewModelScope.launch { prefsRepo.saveGeminiApiKey(key) }
     fun saveBuddyName(name: String) = viewModelScope.launch { prefsRepo.saveBuddyName(name) }
     fun saveExtraContext(ctx: String) = viewModelScope.launch { prefsRepo.saveExtraContext(ctx) }
 }

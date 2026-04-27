@@ -1,7 +1,7 @@
 package com.studybuddy.app.di
 
 import com.studybuddy.app.BuildConfig
-import com.studybuddy.app.network.ClaudeApiService
+import com.studybuddy.app.network.GeminiApiService
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -29,12 +29,12 @@ object NetworkModule {
 
     @Provides @Singleton
     fun provideRetrofit(client: OkHttpClient): Retrofit = Retrofit.Builder()
-        .baseUrl(BuildConfig.CLAUDE_BASE_URL)
+        .baseUrl(BuildConfig.GEMINI_BASE_URL)
         .client(client)
         .addConverterFactory(GsonConverterFactory.create())
         .build()
 
     @Provides @Singleton
-    fun provideClaudeApiService(retrofit: Retrofit): ClaudeApiService =
-        retrofit.create(ClaudeApiService::class.java)
+    fun provideGeminiApiService(retrofit: Retrofit): GeminiApiService =
+        retrofit.create(GeminiApiService::class.java)
 }

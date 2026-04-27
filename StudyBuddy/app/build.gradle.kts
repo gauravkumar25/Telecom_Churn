@@ -19,7 +19,7 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         // API key is set at runtime from Settings screen — not baked into the build
-        buildConfigField("String", "CLAUDE_BASE_URL", "\"https://api.anthropic.com/v1/\"")
+        buildConfigField("String", "GEMINI_BASE_URL", "\"https://generativelanguage.googleapis.com/v1beta/\"")
     }
 
     buildTypes {

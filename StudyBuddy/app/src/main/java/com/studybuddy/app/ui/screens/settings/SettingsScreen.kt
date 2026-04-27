@@ -101,7 +101,7 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
                         Icon(Icons.Default.Info, null, tint = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.size(18.dp))
                         Spacer(Modifier.width(8.dp))
-                        Text("Get your free API key at console.anthropic.com",
+                        Text("Get your free API key at aistudio.google.com",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onPrimaryContainer)
                     }
@@ -110,7 +110,7 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
             OutlinedTextField(
                 value = apiKeyInput,
                 onValueChange = { apiKeyInput = it },
-                label = { Text("Claude API Key") },
+                label = { Text("Gemini API Key") },
                 leadingIcon = { Icon(Icons.Default.Key, null) },
                 trailingIcon = {
                     IconButton(onClick = { showApiKey = !showApiKey }) {
@@ -155,7 +155,7 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
             Card {
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     InfoRow("App", "StudyBuddy v1.0")
-                    InfoRow("AI Model", "Claude Sonnet 4.6")
+                    InfoRow("AI Model", "Gemini 2.0 Flash")
                     InfoRow("Features", "Chat • Voice • Image • Exams • Schedule")
                     InfoRow("Made with", "❤️ for students everywhere")
                 }
